@@ -1,0 +1,67 @@
+name: CI
+
+# The whole point of Viceroy is that it builds with nothing to install, on every
+# platform — most of all Windows, where the usual libiconv shim does not compile.
+# This matrix is the proof. Each platform sources its toolchain the reliable way
+# rather than through one action whose version list lags Swift releases.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  macos:
+    name: macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - run: swift --version
+      - run: swift build
+      - run: swift test
+
+  linux:
+    name: Linux (Swift ${{ matrix.swift }})
+    runs-on: ubuntu-latest
+    container: swift:${{ matrix.swift }}
+    strategy:
+      fail-fast: false
+      matrix:
+        swift: ["6.1", "latest"]   # official Swift Docker images
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift --version
+      - run: swift build
+      - run: swift test
+
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      # compnerd/gha-setup-swift is the authoritative Swift-on-Windows installer
+      # (maintained by the Swift-on-Windows lead). Bump branch/tag to move the
+      # toolchain version; these must match a real swift.org release.
+      - uses: compnerd/gha-setup-swift@main
+        with:
+          branch: swift-6.1-release
+          tag: 6.1-RELEASE
+      - run: swift --version
+      - run: swift build
+      - run: swift test
+
+  # Belt-and-suspenders: the shipping library must import nothing but the stdlib.
+  no-dependencies:
+    name: zero-dependency guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assert zero imports in shipping sources
+        run: |
+          if grep -rnE '^\s*import ' Sources/Viceroy; then
+            echo "::error::Sources/Viceroy must not import anything"; exit 1
+          fi
+          echo "OK — Sources/Viceroy imports nothing but the stdlib"

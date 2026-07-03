@@ -1,0 +1,16 @@
+# Keep first-party text sources LF on every platform. Swift treats "\r\n" as a
+# single Character (grapheme cluster), so a CRLF checkout silently breaks any
+# code that splits a file on "\n" (test harnesses, the table generator).
+*.swift  text eol=lf
+*.md     text eol=lf
+*.yml    text eol=lf
+*.yaml   text eol=lf
+*.json   text eol=lf
+LICENSE  text eol=lf
+NOTICE   text eol=lf
+.gitattributes text eol=lf
+
+# Vendored WHATWG index snapshots are byte-exact (they carry SHA-256 provenance
+# headers in their comments) — never let git rewrite their bytes. Listed last so
+# this wins over the *.json / *.txt rules above.
+vendor/whatwg/** -text
