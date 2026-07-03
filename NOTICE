@@ -1,0 +1,27 @@
+Viceroy
+Copyright (c) 2026 the Viceroy authors.
+
+This product is licensed under the Mozilla Public License 2.0 (see LICENSE).
+
+--------------------------------------------------------------------------------
+Vendored data — WHATWG Encoding Standard index files
+--------------------------------------------------------------------------------
+
+The files under `vendor/whatwg/` are verbatim snapshots of the index tables and
+label list from the WHATWG Encoding Standard:
+
+    https://encoding.spec.whatwg.org/
+
+    index-*.txt              — encoder/decoder index tables
+    index-iso-2022-jp-katakana.txt
+    encodings.json           — the label → encoding map
+
+Snapshot date: 2024-09-18 (per the `# Date:` / `# Identifier:` provenance headers
+inside each file). These files are used to generate `Sources/Viceroy/Tables/*.swift`
+via `Tools/viceroy-tablegen`; the generated Swift is checked in so building the
+library needs no network and no generation step.
+
+The WHATWG Encoding Standard and its index data are made available under the
+terms described at https://spec.whatwg.org/ (CC BY 4.0 for the specification
+text; the index tables are factual data / public domain). They are redistributed
+here solely to make the build reproducible and are not modified.
