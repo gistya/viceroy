@@ -3,13 +3,59 @@
 # Viceroy 
 **A pure-Swift, zero-dependency character-encoding library. (Alternative to iconv).**
 
-## apple / linux \ windows / embedded \ wasm / android
+## apple / linux \ windows / embedded \ wasm / android \
 
 Viceroy transcodes bytes between character encodings with no dependencies. No libiconv, no ICU, no Foundation, nothing but Swift stdlib. Viceroy compiles and runs identically on macOS, Linux, and Windows. There's nothing to install other than a Swift toolchain to build Viceroy.
 
 Viceroy targets the [**WHATWG Encoding Standard**](https://encoding.spec.whatwg.org/). It's a closed, precisely-specified set of ~40 encoders/decoders every web browser uses. This set covers 100% of the character encodings that actually appear in real HTML, XML, and text.
 
-Using Viceroy is simple:
+## Tinyroy:
+
+Viceroy is a tiny bird that you can `-dead_strip` down to just the encodings you need.
+GNU libiconv, on the other hand, is an all-or-nothing affair:
+
+| Configuration | Added to binary | vs iconv |
+|---|---:|---:|
+| **GNU libiconv 1.19** (static, all encodings) | 1,155,728 B | — |
+| Viceroy — all 40 encodings | 613,576 B | **−47%** |
+| Viceroy — no Chinese character encoding | 414,264 B | **−64%** |
+| Viceroy — UTF + single-byte (33 encodings) | 230,824 B | **−80%** |
+| Viceroy — UTF only | 202,920 B | **−82%** |
+
+*(linked binary minus that language's own empty-program baseline: 50,600 B for Swift, 16,840 B for C)*
+
+Viceroy exposes per-encoding granularity for the linker to exploit, allowing the compiler to strip out encodings you're not using.
+
+## Embeddedroy:
+
+As a bare-metal `arm64-apple-none-macho` object, `-Osize`, zero Unicode data tables
+in every configuration:
+
+| Traits | Object |
+|---|---:|
+| all families | 852,984 B |
+| no Chinese | 483,352 B |
+| `SingleByte` | 188,472 B |
+| none (UTF only) | **137,016 B** |
+
+iconv has no number in this table because it doesn't support embedded. macOS's iconv is
+a 28 KB dispatcher that reads 4.3 MB of conversion data from
+`/usr/share/i18n` (700 files) at runtime; GNU libiconv needs a C cross-toolchain
+and a libc. 
+
+Meanwhile Viceroy is one self-contained object whose entire undefined-symbol
+list is:
+
+- `___stack_chk_fail`
+- `___stack_chk_guard` 
+- `_arc4random_buf`  
+- `_free`  
+- `_memset`
+- `_posix_memalign`
+
+## Simpleroy:
+
+Viceroy is simple to use.
 
 ```swift
 import Viceroy
@@ -32,7 +78,7 @@ try decoder.decode(chunk2, into: &view)
 try decoder.finish(into: &view)
 ```
 
-## Two doors: static and dynamic
+## Dualroy:
 
 Viceroy gives you the same engine through two entry points, and the difference is what you pay for at link time:
 
