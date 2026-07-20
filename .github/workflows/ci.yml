@@ -60,32 +60,56 @@ jobs:
   embedded:
     name: Embedded Swift
     runs-on: macos-latest
+    env:
+      SWIFT_VERSION: "6.3.2"
     steps:
       - uses: actions/checkout@v4
-      - uses: maxim-lobanov/setup-xcode@v1
+      # Xcode's bundled toolchain does NOT ship the bare-metal Embedded stdlib —
+      # it fails with "unable to load standard library for target
+      # arm64-apple-none-macho". Only swift.org toolchains carry
+      # usr/lib/swift/embedded (32 targets), so install one explicitly.
+      - name: Cache swift.org toolchain package
+        id: swiftpkg
+        uses: actions/cache@v4
         with:
-          xcode-version: latest-stable
-      - run: swift --version
+          path: /tmp/swift.pkg
+          key: swift-toolchain-pkg-${{ env.SWIFT_VERSION }}-osx
+      - name: Download swift.org toolchain
+        if: steps.swiftpkg.outputs.cache-hit != 'true'
+        run: |
+          curl -fL --retry 3 -o /tmp/swift.pkg \
+            "https://download.swift.org/swift-${SWIFT_VERSION}-release/xcode/swift-${SWIFT_VERSION}-RELEASE/swift-${SWIFT_VERSION}-RELEASE-osx.pkg"
+      - name: Install toolchain and verify it has the Embedded stdlib
+        run: |
+          sudo installer -pkg /tmp/swift.pkg -target /
+          TC="/Library/Developer/Toolchains/swift-${SWIFT_VERSION}-RELEASE.xctoolchain"
+          if [ ! -d "$TC/usr/lib/swift/embedded" ]; then
+            echo "::error::$TC has no Embedded stdlib"; exit 1
+          fi
+          echo "embedded targets: $(ls "$TC/usr/lib/swift/embedded" | wc -l)"
+          ls "$TC/usr/lib/swift/embedded" | grep none-macho | head -3
+          echo "SWIFTC=$TC/usr/bin/swiftc" >> "$GITHUB_ENV"
+      - run: "$SWIFTC --version"
       - name: Compile for Embedded Swift (arm64-apple-none-macho)
         run: |
           mkdir -p /tmp/emb
           # NB: raw swiftc does not define SwiftPM trait conditions, so pass them
           # explicitly. Build BOTH the full set and the UTF-only set — the latter
           # is what proves the `#if` exclusion actually compiles standalone.
-          swiftc -target arm64-apple-none-macho \
+          "$SWIFTC" -target arm64-apple-none-macho \
             -enable-experimental-feature Embedded -wmo -parse-as-library -Osize \
             -D Chinese -D Japanese -D Korean -D SingleByte \
             -module-name Viceroy -emit-module -emit-module-path /tmp/emb/Viceroy.swiftmodule \
             -c Sources/Viceroy/*.swift Sources/Viceroy/Decoders/*.swift Sources/Viceroy/Tables/*.swift \
             -o /tmp/emb/viceroy.o
-          swiftc -target arm64-apple-none-macho \
+          "$SWIFTC" -target arm64-apple-none-macho \
             -enable-experimental-feature Embedded -wmo -parse-as-library -Osize \
             -c Sources/Viceroy/*.swift Sources/Viceroy/Decoders/*.swift Sources/Viceroy/Tables/*.swift \
             -o /tmp/emb/viceroy-minimal.o
           echo "full:    $(wc -c < /tmp/emb/viceroy.o) bytes"
           echo "UTF-only: $(wc -c < /tmp/emb/viceroy-minimal.o) bytes"
           # The opt-in iconv shim must stay Embedded-clean too.
-          swiftc -target arm64-apple-none-macho \
+          "$SWIFTC" -target arm64-apple-none-macho \
             -enable-experimental-feature Embedded -wmo -parse-as-library -Osize \
             -D Chinese -D Japanese -D Korean -D SingleByte \
             -module-name ViceroyIConvCompat -I /tmp/emb \
