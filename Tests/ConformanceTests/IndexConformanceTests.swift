@@ -149,3 +149,32 @@ private func sweep(
         }
     }
 }
+
+// MARK: - Label table sweep
+
+private struct EncJSON: Decodable { let labels: [String]; let name: String }
+private struct GroupJSON: Decodable { let encodings: [EncJSON] }
+
+/// Every WHATWG label must resolve to its canonical encoding through the
+/// byte-searched label table (which replaced the old `[String: Int]` map).
+@Test func everyWHATWGLabelResolves() throws {
+    let data = try Data(contentsOf: vendorDir.appendingPathComponent("encodings.json"))
+    let groups = try JSONDecoder().decode([GroupJSON].self, from: data)
+    var checked = 0
+    for g in groups {
+        for e in g.encodings {
+            for label in e.labels {
+                #expect(Encoding(label: label)?.name == e.name, "label \(label)")
+                // Case-insensitive + surrounding ASCII whitespace must also resolve.
+                #expect(Encoding(label: "  \(label.uppercased())\t")?.name == e.name,
+                        "label \(label) (upper/padded)")
+                checked += 1
+            }
+        }
+    }
+    #expect(checked == 228, "expected 228 labels, swept \(checked)")
+    // Unknown labels must not match — guards binary-search off-by-one.
+    for bogus in ["", "not-an-encoding", "utf", "utf-88", "zzz", "8", "windows-125"] {
+        #expect(Encoding(label: bogus) == nil, "bogus label \(bogus) resolved")
+    }
+}

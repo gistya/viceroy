@@ -53,6 +53,82 @@ jobs:
       - run: swift build
       - run: swift test
 
+  # Viceroy must stay usable from Embedded Swift: it has to compile for a
+  # bare-metal target AND pull no Unicode data tables (libswiftUnicodeDataTables).
+  # Both are easy to regress — one `String ==` or a `[String: Key]` is enough —
+  # so this job locks them in.
+  embedded:
+    name: Embedded Swift
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - run: swift --version
+      - name: Compile for Embedded Swift (arm64-apple-none-macho)
+        run: |
+          mkdir -p /tmp/emb
+          # NB: raw swiftc does not define SwiftPM trait conditions, so pass them
+          # explicitly. Build BOTH the full set and the UTF-only set — the latter
+          # is what proves the `#if` exclusion actually compiles standalone.
+          swiftc -target arm64-apple-none-macho \
+            -enable-experimental-feature Embedded -wmo -parse-as-library -Osize \
+            -D Chinese -D Japanese -D Korean -D SingleByte \
+            -module-name Viceroy -emit-module -emit-module-path /tmp/emb/Viceroy.swiftmodule \
+            -c Sources/Viceroy/*.swift Sources/Viceroy/Decoders/*.swift Sources/Viceroy/Tables/*.swift \
+            -o /tmp/emb/viceroy.o
+          swiftc -target arm64-apple-none-macho \
+            -enable-experimental-feature Embedded -wmo -parse-as-library -Osize \
+            -c Sources/Viceroy/*.swift Sources/Viceroy/Decoders/*.swift Sources/Viceroy/Tables/*.swift \
+            -o /tmp/emb/viceroy-minimal.o
+          echo "full:    $(wc -c < /tmp/emb/viceroy.o) bytes"
+          echo "UTF-only: $(wc -c < /tmp/emb/viceroy-minimal.o) bytes"
+          # The opt-in iconv shim must stay Embedded-clean too.
+          swiftc -target arm64-apple-none-macho \
+            -enable-experimental-feature Embedded -wmo -parse-as-library -Osize \
+            -D Chinese -D Japanese -D Korean -D SingleByte \
+            -module-name ViceroyIConvCompat -I /tmp/emb \
+            -c Sources/ViceroyIConvCompat/*.swift -o /tmp/emb/compat.o
+      - name: Assert zero Unicode data-table dependencies
+        run: |
+          fail=0
+          for o in /tmp/emb/viceroy.o /tmp/emb/viceroy-minimal.o /tmp/emb/compat.o; do
+            echo "--- undefined symbols in $(basename $o) ---"
+            nm -u "$o"
+            n=$(nm -u "$o" | grep -cE 'getComposition|getNormData|getDecompositionEntry|nfd_decompositions' || true)
+            if [ "$n" != "0" ]; then
+              echo "::error::$(basename $o) pulled $n Unicode data-table symbol(s) — Embedded builds must stay libc-only"
+              fail=1
+            fi
+          done
+          [ "$fail" = "0" ] && echo "OK — zero Unicode data-table symbols" || exit 1
+
+  # Every trait combination must still compile. The `#if` wiring spans decoders,
+  # tables, generated blobs and both dispatch switches — easy to rot silently.
+  traits:
+    name: Trait matrix
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: all (default)
+            args: ""
+          - name: no Chinese
+            args: "--traits Japanese,Korean,SingleByte"
+          - name: UTF + SingleByte
+            args: "--traits SingleByte"
+          - name: UTF only
+            args: "--disable-default-traits"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: Build (${{ matrix.name }})
+        run: swift build -c release ${{ matrix.args }}
+
   # Belt-and-suspenders: the shipping library must import nothing but the stdlib.
   no-dependencies:
     name: zero-dependency guard

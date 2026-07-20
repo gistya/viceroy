@@ -45,30 +45,32 @@ public struct Encoding: Sendable, Hashable, CustomStringConvertible {
     /// ASCII, then match against the ~220-entry alias table. Returns `nil` for an
     /// unknown label. Note WHATWG quirks: `iso-8859-1`/`latin1` → `windows-1252`.
     public init?(label: String) {
-        // WHATWG "get an encoding": operate on ASCII whitespace = TAB, LF, FF, CR, SPACE.
-        @inline(__always) func isWS(_ u: Unicode.Scalar) -> Bool {
-            u == "\t" || u == "\n" || u == "\u{0C}" || u == "\r" || u == " "
+        // WHATWG "get an encoding", done entirely on UTF-8 bytes: trim ASCII
+        // whitespace (TAB, LF, FF, CR, SPACE), lowercase ASCII, then binary-search
+        // the label table. No String case-folding or hashing anywhere — those need
+        // Unicode data tables, which would bar Embedded Swift use.
+        @inline(__always) func isWS(_ b: UInt8) -> Bool {
+            b == 0x09 || b == 0x0A || b == 0x0C || b == 0x0D || b == 0x20
         }
-        let scalars = Array(label.unicodeScalars)
-        var start = 0, end = scalars.count
-        while start < end, isWS(scalars[start]) { start += 1 }
-        while end > start, isWS(scalars[end - 1]) { end -= 1 }
-        // Lowercase ASCII only; interior whitespace is preserved (not trimmed).
-        var lo = ""
-        lo.unicodeScalars.reserveCapacity(end - start)
-        for i in start..<end {
-            let u = scalars[i]
-            if u.value >= 0x41 && u.value <= 0x5A {
-                lo.unicodeScalars.append(Unicode.Scalar(u.value + 0x20)!)
-            } else {
-                lo.unicodeScalars.append(u)
-            }
+        var buf = [UInt8]()
+        buf.reserveCapacity(label.utf8.count)
+        for b in label.utf8 {
+            buf.append((b >= 0x41 && b <= 0x5A) ? b &+ 0x20 : b)
         }
-        guard let idx = _labelToIndex[lo] else { return nil }
+        var start = 0, end = buf.count
+        while start < end, isWS(buf[start]) { start += 1 }
+        while end > start, isWS(buf[end - 1]) { end -= 1 }
+        guard let idx = lookupLabel(buf[start..<end]) else { return nil }
         self = Encoding(name: _canonicalNames[idx], scheme: _schemes[idx])
     }
 
     public var description: String { name }
+
+    // `name` is uniquely determined by `scheme`, so identity is the scheme alone.
+    // Hashing on the scheme (a plain integer enum) rather than the `String` name
+    // keeps `Encoding` free of Unicode-normalization dependencies.
+    public static func == (lhs: Encoding, rhs: Encoding) -> Bool { lhs.scheme == rhs.scheme }
+    public func hash(into hasher: inout Hasher) { hasher.combine(scheme) }
 }
 
 // MARK: - Well-known encodings

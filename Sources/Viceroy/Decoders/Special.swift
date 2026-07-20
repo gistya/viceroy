@@ -44,3 +44,37 @@ struct XUserDefinedEncoder: ScalarHandler {
         return .unmappable
     }
 }
+
+// MARK: - Static entry point
+
+extension Encoding {
+    /// x-user-defined, resolved statically — links only this encoding's decoder and tables.
+    public enum XUserDefined: TextEncoding {
+        public static var name: String { "x-user-defined" }
+
+        public static func decode(_ bytes: [UInt8], mode: DecodingErrorMode) throws(ViceroyError) -> String {
+            try runDecode(XUserDefinedDecoder(), bytes, mode, stripBOM: false)
+        }
+
+        public static func encode(_ string: String, mode: EncodingErrorMode) throws(ViceroyError) -> [UInt8] {
+            try runEncode(XUserDefinedEncoder(), string.unicodeScalars, mode)
+        }
+    }
+}
+
+// MARK: - Static entry point
+
+extension Encoding {
+    /// replacement, resolved statically — links only this encoding's decoder and tables.
+    public enum Replacement: TextEncoding {
+        public static var name: String { "replacement" }
+
+        public static func decode(_ bytes: [UInt8], mode: DecodingErrorMode) throws(ViceroyError) -> String {
+            try runDecode(ReplacementDecoder(), bytes, mode, stripBOM: false)
+        }
+
+        public static func encode(_ string: String, mode: EncodingErrorMode) throws(ViceroyError) -> [UInt8] {
+            try runEncode(UTF8Encoder(), string.unicodeScalars, mode)
+        }
+    }
+}

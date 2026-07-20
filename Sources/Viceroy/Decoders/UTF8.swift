@@ -92,3 +92,28 @@ struct UTF8Encoder: ScalarHandler {
         return .ok
     }
 }
+
+// MARK: - Static entry point
+
+extension Encoding {
+    /// UTF-8, resolved statically. Links only the UTF-8 path — no tables at all.
+    /// NB: `Swift.UTF8` is spelled explicitly below; inside `extension Encoding`
+    /// a bare `UTF8` would resolve to this very namespace.
+    public enum UTF8: TextEncoding {
+        public static var name: String { "UTF-8" }
+
+        public static func decode(_ bytes: [UInt8], mode: DecodingErrorMode) throws(ViceroyError) -> String {
+            if mode == .replacement {
+                if bytes.count >= 3, bytes[0] == 0xEF, bytes[1] == 0xBB, bytes[2] == 0xBF {
+                    return String(decoding: bytes[3...], as: Swift.UTF8.self)
+                }
+                return String(decoding: bytes, as: Swift.UTF8.self)
+            }
+            return try runDecode(UTF8Decoder(), bytes, mode, stripBOM: true)
+        }
+
+        public static func encode(_ string: String, mode: EncodingErrorMode) throws(ViceroyError) -> [UInt8] {
+            Array(string.utf8)   // a String already *is* UTF-8
+        }
+    }
+}

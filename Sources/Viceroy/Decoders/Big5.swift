@@ -1,3 +1,4 @@
+#if Chinese
 //===----------------------------------------------------------------------===//
 // Viceroy — Big5  (WHATWG §11.1) — note the four two-scalar pointers.
 //===----------------------------------------------------------------------===//
@@ -53,3 +54,21 @@ struct Big5Encoder: ScalarHandler {
         return .ok
     }
 }
+
+// MARK: - Static entry point
+
+extension Encoding {
+    /// Big5, resolved statically. Links only this decoder + the Big5 table.
+    public enum Big5: TextEncoding {
+        public static var name: String { "Big5" }
+
+        public static func decode(_ bytes: [UInt8], mode: DecodingErrorMode) throws(ViceroyError) -> String {
+            try runDecode(Big5Decoder(), bytes, mode, stripBOM: false)
+        }
+
+        public static func encode(_ string: String, mode: EncodingErrorMode) throws(ViceroyError) -> [UInt8] {
+            try runEncode(Big5Encoder(), string.unicodeScalars, mode)
+        }
+    }
+}
+#endif

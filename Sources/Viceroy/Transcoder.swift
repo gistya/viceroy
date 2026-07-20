@@ -23,7 +23,7 @@ public struct Transcoder: Sendable {
     }
 
     /// Transcode a whole buffer.
-    public func transcode(_ bytes: [UInt8]) throws -> [UInt8] {
+    public func transcode(_ bytes: [UInt8]) throws(ViceroyError) -> [UInt8] {
         let scalars = try from.decode(bytes, mode: onDecodeError).unicodeScalars
         return try to.encodeScalars(scalars, mode: onEncodeError)
     }

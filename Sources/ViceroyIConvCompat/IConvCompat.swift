@@ -21,16 +21,26 @@ public struct IConv: Sendable {
     /// unknown — the analogue of `iconv_open` returning `(iconv_t)-1`.
     public init?(fromCode: String, toCode: String) {
         // iconv labels never contain '/', so the label is the first slash-part
-        // and any trailing parts are `//IGNORE` / `//TRANSLIT` markers.
-        let parts = toCode.split(separator: "/", omittingEmptySubsequences: true)
-        let toLabel = parts.first.map(String.init) ?? ""
+        // and any trailing parts are `//IGNORE` / `//TRANSLIT` markers. Split and
+        // compare on UTF-8 bytes — `String.lowercased()` would pull in Unicode
+        // case-mapping tables and bar Embedded Swift use.
+        var parts: [[UInt8]] = []
+        var cur: [UInt8] = []
+        for b in toCode.utf8 {
+            if b == 0x2F {                       // '/'
+                if !cur.isEmpty { parts.append(cur); cur = [] }
+            } else {
+                cur.append(b)
+            }
+        }
+        if !cur.isEmpty { parts.append(cur) }
+
+        let toLabel = parts.first.map { String(decoding: $0, as: UTF8.self) } ?? ""
         var encodeError: EncodingErrorMode = .fatal
         for marker in parts.dropFirst() {
-            switch marker.lowercased() {
-            case "ignore":   encodeError = .drop
-            case "translit": encodeError = .replacement(0x3F)
-            default:         break
-            }
+            let lower = marker.map { (b: UInt8) in (b >= 0x41 && b <= 0x5A) ? b &+ 0x20 : b }
+            if lower == Array("ignore".utf8) { encodeError = .drop }
+            else if lower == Array("translit".utf8) { encodeError = .replacement(0x3F) }
         }
         guard let from = Encoding(label: fromCode),
               let dst = Encoding(label: toLabel) else { return nil }
@@ -41,7 +51,7 @@ public struct IConv: Sendable {
     /// Convert a whole buffer, analogous to draining `iconv()` in one call.
     /// Throws in the fatal encode case (no `//IGNORE`/`//TRANSLIT`), like `iconv`
     /// returning `EILSEQ` on an unrepresentable character.
-    public func convert(_ input: [UInt8]) throws -> [UInt8] {
+    public func convert(_ input: [UInt8]) throws(ViceroyError) -> [UInt8] {
         try transcoder.transcode(input)
     }
 }

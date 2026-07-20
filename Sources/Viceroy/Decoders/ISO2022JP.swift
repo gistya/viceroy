@@ -1,3 +1,4 @@
+#if Japanese
 //===----------------------------------------------------------------------===//
 // Viceroy — ISO-2022-JP  (WHATWG §12.2) — the stateful one.
 //
@@ -151,3 +152,21 @@ struct ISO2022JPEncoder: ScalarHandler {
         }
     }
 }
+
+// MARK: - Static entry point
+
+extension Encoding {
+    /// ISO-2022-JP, resolved statically — links only this encoding's decoder and tables.
+    public enum ISO2022JP: TextEncoding {
+        public static var name: String { "ISO-2022-JP" }
+
+        public static func decode(_ bytes: [UInt8], mode: DecodingErrorMode) throws(ViceroyError) -> String {
+            try runDecode(ISO2022JPDecoder(), bytes, mode, stripBOM: false)
+        }
+
+        public static func encode(_ string: String, mode: EncodingErrorMode) throws(ViceroyError) -> [UInt8] {
+            try runEncode(ISO2022JPEncoder(), string.unicodeScalars, mode)
+        }
+    }
+}
+#endif

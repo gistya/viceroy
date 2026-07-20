@@ -12,18 +12,18 @@
 @usableFromInline
 class AnyDecoderBox {
     @usableFromInline init() {}
-    @usableFromInline func feed(_ bytes: [UInt8], into sink: inout String.UnicodeScalarView) throws { fatalError() }
-    @usableFromInline func finish(into sink: inout String.UnicodeScalarView) throws { fatalError() }
+    @usableFromInline func feed(_ bytes: [UInt8], into sink: inout String.UnicodeScalarView) throws(ViceroyError) { fatalError() }
+    @usableFromInline func finish(into sink: inout String.UnicodeScalarView) throws(ViceroyError) { fatalError() }
 }
 
 @usableFromInline
 final class DecoderBox<H: ByteHandler>: AnyDecoderBox {
     @usableFromInline var driver: DecodeDriver<H>
     @usableFromInline init(_ h: H, _ mode: DecodingErrorMode) { driver = DecodeDriver(h, mode: mode) }
-    @usableFromInline override func feed(_ bytes: [UInt8], into sink: inout String.UnicodeScalarView) throws {
+    @usableFromInline override func feed(_ bytes: [UInt8], into sink: inout String.UnicodeScalarView) throws(ViceroyError) {
         try driver.feed(bytes, into: &sink)
     }
-    @usableFromInline override func finish(into sink: inout String.UnicodeScalarView) throws {
+    @usableFromInline override func finish(into sink: inout String.UnicodeScalarView) throws(ViceroyError) {
         try driver.finish(into: &sink)
     }
 }
@@ -31,7 +31,7 @@ final class DecoderBox<H: ByteHandler>: AnyDecoderBox {
 @usableFromInline
 class AnyEncoderBox {
     @usableFromInline init() {}
-    @usableFromInline func feed(_ scalars: [Unicode.Scalar], into out: inout [UInt8]) throws { fatalError() }
+    @usableFromInline func feed(_ scalars: [Unicode.Scalar], into out: inout [UInt8]) throws(ViceroyError) { fatalError() }
     @usableFromInline func finish(into out: inout [UInt8]) { fatalError() }
 }
 
@@ -39,10 +39,32 @@ class AnyEncoderBox {
 final class EncoderBox<H: ScalarHandler>: AnyEncoderBox {
     @usableFromInline var driver: EncodeDriver<H>
     @usableFromInline init(_ h: H, _ mode: EncodingErrorMode) { driver = EncodeDriver(h, mode: mode) }
-    @usableFromInline override func feed(_ scalars: [Unicode.Scalar], into out: inout [UInt8]) throws {
+    @usableFromInline override func feed(_ scalars: [Unicode.Scalar], into out: inout [UInt8]) throws(ViceroyError) {
         try driver.feed(scalars, into: &out)
     }
     @usableFromInline override func finish(into out: inout [UInt8]) { driver.finish(into: &out) }
+}
+
+/// Stands in for a family excluded at build time: construction still succeeds
+/// (the initializers are not throwing), and the failure surfaces on first feed.
+@usableFromInline
+final class UnavailableDecoderBox: AnyDecoderBox {
+    @usableFromInline let trait: String
+    @usableFromInline init(_ trait: String) { self.trait = trait; super.init() }
+    @usableFromInline override func feed(_ bytes: [UInt8], into sink: inout String.UnicodeScalarView) throws(ViceroyError) {
+        throw unavailable(trait)
+    }
+    @usableFromInline override func finish(into sink: inout String.UnicodeScalarView) throws(ViceroyError) {}
+}
+
+@usableFromInline
+final class UnavailableEncoderBox: AnyEncoderBox {
+    @usableFromInline let trait: String
+    @usableFromInline init(_ trait: String) { self.trait = trait; super.init() }
+    @usableFromInline override func feed(_ scalars: [Unicode.Scalar], into out: inout [UInt8]) throws(ViceroyError) {
+        throw unavailable(trait)
+    }
+    @usableFromInline override func finish(into out: inout [UInt8]) {}
 }
 
 func makeDecoderBox(_ scheme: Scheme, _ mode: DecodingErrorMode) -> AnyDecoderBox {
@@ -50,15 +72,31 @@ func makeDecoderBox(_ scheme: Scheme, _ mode: DecodingErrorMode) -> AnyDecoderBo
     case .utf8:              return DecoderBox(UTF8Decoder(), mode)
     case .utf16le:           return DecoderBox(UTF16Decoder(bigEndian: false), mode)
     case .utf16be:           return DecoderBox(UTF16Decoder(bigEndian: true), mode)
+#if SingleByte
     case .singleByte(let i): return DecoderBox(SingleByteDecoder(tableIndex: i), mode)
+#else
+    case .singleByte:        return UnavailableDecoderBox("SingleByte")
+#endif
     case .replacement:       return DecoderBox(ReplacementDecoder(), mode)
     case .xUserDefined:      return DecoderBox(XUserDefinedDecoder(), mode)
+#if Japanese
     case .shiftJIS:          return DecoderBox(ShiftJISDecoder(), mode)
     case .eucJP:             return DecoderBox(EUCJPDecoder(), mode)
     case .iso2022JP:         return DecoderBox(ISO2022JPDecoder(), mode)
+#else
+    case .shiftJIS, .eucJP, .iso2022JP: return UnavailableDecoderBox("Japanese")
+#endif
+#if Chinese
     case .big5:              return DecoderBox(Big5Decoder(), mode)
     case .gbk, .gb18030:     return DecoderBox(GB18030Decoder(), mode)
+#else
+    case .big5, .gbk, .gb18030: return UnavailableDecoderBox("Chinese")
+#endif
+#if Korean
     case .eucKR:             return DecoderBox(EUCKRDecoder(), mode)
+#else
+    case .eucKR:             return UnavailableDecoderBox("Korean")
+#endif
     }
 }
 
@@ -67,15 +105,31 @@ func makeEncoderBox(_ scheme: Scheme, _ mode: EncodingErrorMode) -> AnyEncoderBo
     case .utf8, .replacement: return EncoderBox(UTF8Encoder(), mode)
     case .utf16le:            return EncoderBox(UTF16Encoder(bigEndian: false), mode)
     case .utf16be:            return EncoderBox(UTF16Encoder(bigEndian: true), mode)
+#if SingleByte
     case .singleByte(let i):  return EncoderBox(SingleByteEncoder(tableIndex: i), mode)
+#else
+    case .singleByte:         return UnavailableEncoderBox("SingleByte")
+#endif
     case .xUserDefined:       return EncoderBox(XUserDefinedEncoder(), mode)
+#if Japanese
     case .shiftJIS:           return EncoderBox(ShiftJISEncoder(), mode)
     case .eucJP:              return EncoderBox(EUCJPEncoder(), mode)
     case .iso2022JP:          return EncoderBox(ISO2022JPEncoder(), mode)
+#else
+    case .shiftJIS, .eucJP, .iso2022JP: return UnavailableEncoderBox("Japanese")
+#endif
+#if Chinese
     case .big5:               return EncoderBox(Big5Encoder(), mode)
     case .gbk:                return EncoderBox(GB18030Encoder(gb18030: false), mode)
     case .gb18030:            return EncoderBox(GB18030Encoder(gb18030: true), mode)
+#else
+    case .big5, .gbk, .gb18030: return UnavailableEncoderBox("Chinese")
+#endif
+#if Korean
     case .eucKR:              return EncoderBox(EUCKREncoder(), mode)
+#else
+    case .eucKR:              return UnavailableEncoderBox("Korean")
+#endif
     }
 }
 
@@ -106,7 +160,7 @@ public struct StreamingDecoder {
     /// mode on the first malformed unit.
     public mutating func decode(
         _ chunk: some Sequence<UInt8>, into sink: inout String.UnicodeScalarView
-    ) throws {
+    ) throws(ViceroyError) {
         if bomResolved {
             try box.feed(Array(chunk), into: &sink)
             return
@@ -116,12 +170,12 @@ public struct StreamingDecoder {
     }
 
     /// Flush trailing state at end of input.
-    public mutating func finish(into sink: inout String.UnicodeScalarView) throws {
+    public mutating func finish(into sink: inout String.UnicodeScalarView) throws(ViceroyError) {
         try resolveBOM(flush: true, into: &sink)
         try box.finish(into: &sink)
     }
 
-    private mutating func resolveBOM(flush: Bool, into sink: inout String.UnicodeScalarView) throws {
+    private mutating func resolveBOM(flush: Bool, into sink: inout String.UnicodeScalarView) throws(ViceroyError) {
         guard let bom = expectedBOM, !bomResolved else { return }
         let n = min(bomBuffer.count, bom.count)
         for i in 0..<n where bomBuffer[i] != bom[i] {
@@ -156,7 +210,7 @@ public struct StreamingEncoder {
 
     public mutating func encode(
         _ scalars: some Sequence<Unicode.Scalar>, into out: inout [UInt8]
-    ) throws {
+    ) throws(ViceroyError) {
         try box.feed(Array(scalars), into: &out)
     }
 

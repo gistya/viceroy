@@ -1,3 +1,4 @@
+#if Japanese
 //===----------------------------------------------------------------------===//
 // Viceroy — EUC-JP  (WHATWG §12.1) — JIS X 0208 + 0212 + half-width katakana.
 //===----------------------------------------------------------------------===//
@@ -56,3 +57,21 @@ struct EUCJPEncoder: ScalarHandler {
         return .ok
     }
 }
+
+// MARK: - Static entry point
+
+extension Encoding {
+    /// EUC-JP, resolved statically — links only this encoding's decoder and tables.
+    public enum EUCJP: TextEncoding {
+        public static var name: String { "EUC-JP" }
+
+        public static func decode(_ bytes: [UInt8], mode: DecodingErrorMode) throws(ViceroyError) -> String {
+            try runDecode(EUCJPDecoder(), bytes, mode, stripBOM: false)
+        }
+
+        public static func encode(_ string: String, mode: EncodingErrorMode) throws(ViceroyError) -> [UInt8] {
+            try runEncode(EUCJPEncoder(), string.unicodeScalars, mode)
+        }
+    }
+}
+#endif

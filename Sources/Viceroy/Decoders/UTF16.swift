@@ -81,3 +81,37 @@ struct UTF16Encoder: ScalarHandler {
         return .ok
     }
 }
+
+// MARK: - Static entry point
+
+extension Encoding {
+    /// UTF-16LE, resolved statically — links only this encoding's decoder and tables.
+    public enum UTF16LE: TextEncoding {
+        public static var name: String { "UTF-16LE" }
+
+        public static func decode(_ bytes: [UInt8], mode: DecodingErrorMode) throws(ViceroyError) -> String {
+            try runDecode(UTF16Decoder(bigEndian: false), bytes, mode, stripBOM: true)
+        }
+
+        public static func encode(_ string: String, mode: EncodingErrorMode) throws(ViceroyError) -> [UInt8] {
+            try runEncode(UTF16Encoder(bigEndian: false), string.unicodeScalars, mode)
+        }
+    }
+}
+
+// MARK: - Static entry point
+
+extension Encoding {
+    /// UTF-16BE, resolved statically — links only this encoding's decoder and tables.
+    public enum UTF16BE: TextEncoding {
+        public static var name: String { "UTF-16BE" }
+
+        public static func decode(_ bytes: [UInt8], mode: DecodingErrorMode) throws(ViceroyError) -> String {
+            try runDecode(UTF16Decoder(bigEndian: true), bytes, mode, stripBOM: true)
+        }
+
+        public static func encode(_ string: String, mode: EncodingErrorMode) throws(ViceroyError) -> [UInt8] {
+            try runEncode(UTF16Encoder(bigEndian: true), string.unicodeScalars, mode)
+        }
+    }
+}

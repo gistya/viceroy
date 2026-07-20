@@ -20,6 +20,11 @@ public struct ViceroyError: Error, Sendable, Equatable, CustomStringConvertible 
         case invalidByteSequence
         /// A scalar could not be encoded in `.fatal` mode.
         case unmappableScalar
+        /// The encoding exists but its family was excluded at build time via a
+        /// package trait (e.g. `Chinese` disabled). Only reachable through the
+        /// dynamic API — the static namespaces of an excluded family simply do
+        /// not exist, so misuse there is a compile error instead.
+        case encodingUnavailable
     }
     public var code: Code
     /// Byte offset (decoding) or scalar offset (encoding) at which the error occurred.
@@ -34,6 +39,16 @@ public struct ViceroyError: Error, Sendable, Equatable, CustomStringConvertible 
     }
 
     public var description: String { "ViceroyError(\(code), offset: \(offset)): \(message)" }
+
+    /// Compared byte-wise rather than via `String ==`. Swift string equality is
+    /// canonical-equivalence based and links the Unicode normalization tables into
+    /// the binary; comparing UTF-8 directly is exact here (messages are ASCII) and
+    /// keeps Viceroy free of Unicode data on Embedded Swift.
+    public static func == (lhs: ViceroyError, rhs: ViceroyError) -> Bool {
+        lhs.code == rhs.code
+            && lhs.offset == rhs.offset
+            && lhs.message.utf8.elementsEqual(rhs.message.utf8)
+    }
 }
 
 // MARK: - Error modes
@@ -188,7 +203,7 @@ struct DecodeDriver<H: ByteHandler> {
     mutating func feed<S: ScalarSink>(
         _ bytes: some Sequence<UInt8>,
         into sink: inout S
-    ) throws {
+    ) throws(ViceroyError) {
         for b in bytes {
             try step(b, into: &sink)
             // Drain any bytes the handler asked to reprocess.
@@ -200,7 +215,7 @@ struct DecodeDriver<H: ByteHandler> {
     }
 
     @inlinable
-    mutating func step<S: ScalarSink>(_ byte: UInt8, into sink: inout S) throws {
+    mutating func step<S: ScalarSink>(_ byte: UInt8, into sink: inout S) throws(ViceroyError) {
         switch handler.handle(byte) {
         case .scalar(let s):
             sink.emit(s)
@@ -223,7 +238,7 @@ struct DecodeDriver<H: ByteHandler> {
     /// so this drains pushback through the normal `step` path and re-checks EOF
     /// until the stream is genuinely finished.
     @inlinable
-    mutating func finish<S: ScalarSink>(into sink: inout S) throws {
+    mutating func finish<S: ScalarSink>(into sink: inout S) throws(ViceroyError) {
         var guardCount = 0
         while true {
             while !pushback.isEmpty {
@@ -250,7 +265,7 @@ struct DecodeDriver<H: ByteHandler> {
     }
 
     @inlinable
-    mutating func emitError<S: ScalarSink>(into sink: inout S) throws {
+    mutating func emitError<S: ScalarSink>(into sink: inout S) throws(ViceroyError) {
         switch mode {
         case .replacement:
             sink.emitReplacement()
@@ -280,7 +295,7 @@ struct EncodeDriver<H: ScalarHandler> {
     mutating func feed(
         _ scalars: some Sequence<Unicode.Scalar>,
         into out: inout [UInt8]
-    ) throws {
+    ) throws(ViceroyError) {
         for s in scalars {
             var guardCount = 0
             loop: while true {
@@ -306,7 +321,7 @@ struct EncodeDriver<H: ScalarHandler> {
     }
 
     @inlinable
-    mutating func emitUnmappable(_ s: Unicode.Scalar, into out: inout [UInt8]) throws {
+    mutating func emitUnmappable(_ s: Unicode.Scalar, into out: inout [UInt8]) throws(ViceroyError) {
         switch mode {
         case .replacement(let byte):
             out.append(byte)
@@ -331,13 +346,17 @@ struct EncodeDriver<H: ScalarHandler> {
 
 // MARK: - Small utilities
 
-/// Uppercase hex without Foundation, for error messages.
+/// Uppercase hex without Foundation, for error messages. Built from ASCII bytes
+/// rather than `[Character]` so it needs no grapheme-breaking machinery.
 @usableFromInline
 func hexUpper(_ v: UInt32) -> String {
     if v == 0 { return "0" }
-    let digits: [Character] = ["0","1","2","3","4","5","6","7","8","9","A","B","C","D","E","F"]
-    var out: [Character] = []
+    var bytes = [UInt8]()
     var n = v
-    while n > 0 { out.append(digits[Int(n & 0xF)]); n >>= 4 }
-    return String(out.reversed())
+    while n > 0 {
+        let d = UInt8(n & 0xF)
+        bytes.append(d < 10 ? 0x30 &+ d : 0x41 &+ d &- 10)
+        n >>= 4
+    }
+    return String(decoding: bytes.reversed(), as: UTF8.self)
 }

@@ -1,3 +1,4 @@
+#if Japanese
 //===----------------------------------------------------------------------===//
 // Viceroy — Shift_JIS  (WHATWG §12.3)
 //===----------------------------------------------------------------------===//
@@ -58,3 +59,21 @@ struct ShiftJISEncoder: ScalarHandler {
         return .ok
     }
 }
+
+// MARK: - Static entry point
+
+extension Encoding {
+    /// Shift_JIS, resolved statically. Links only this decoder + the jis0208 table.
+    public enum ShiftJIS: TextEncoding {
+        public static var name: String { "Shift_JIS" }
+
+        public static func decode(_ bytes: [UInt8], mode: DecodingErrorMode) throws(ViceroyError) -> String {
+            try runDecode(ShiftJISDecoder(), bytes, mode, stripBOM: false)
+        }
+
+        public static func encode(_ string: String, mode: EncodingErrorMode) throws(ViceroyError) -> [UInt8] {
+            try runEncode(ShiftJISEncoder(), string.unicodeScalars, mode)
+        }
+    }
+}
+#endif

@@ -1,3 +1,4 @@
+#if Chinese
 //===----------------------------------------------------------------------===//
 // Viceroy — gb18030 / GBK  (WHATWG §10.2)
 //
@@ -96,3 +97,38 @@ struct GB18030Encoder: ScalarHandler {
         return .ok
     }
 }
+
+// MARK: - Static entry point
+
+extension Encoding {
+    /// gb18030, resolved statically — links only this encoding's decoder and tables.
+    public enum GB18030: TextEncoding {
+        public static var name: String { "gb18030" }
+
+        public static func decode(_ bytes: [UInt8], mode: DecodingErrorMode) throws(ViceroyError) -> String {
+            try runDecode(GB18030Decoder(), bytes, mode, stripBOM: false)
+        }
+
+        public static func encode(_ string: String, mode: EncodingErrorMode) throws(ViceroyError) -> [UInt8] {
+            try runEncode(GB18030Encoder(gb18030: true), string.unicodeScalars, mode)
+        }
+    }
+}
+
+// MARK: - Static entry point
+
+extension Encoding {
+    /// GBK, resolved statically — links only this encoding's decoder and tables.
+    public enum GBK: TextEncoding {
+        public static var name: String { "GBK" }
+
+        public static func decode(_ bytes: [UInt8], mode: DecodingErrorMode) throws(ViceroyError) -> String {
+            try runDecode(GB18030Decoder(), bytes, mode, stripBOM: false)
+        }
+
+        public static func encode(_ string: String, mode: EncodingErrorMode) throws(ViceroyError) -> [UInt8] {
+            try runEncode(GB18030Encoder(gb18030: false), string.unicodeScalars, mode)
+        }
+    }
+}
+#endif

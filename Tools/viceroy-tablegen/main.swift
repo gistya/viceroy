@@ -89,29 +89,41 @@ let header = """
 
 """
 
-func write(_ name: String, _ contents: String) {
+/// Emit a generated file. `trait` wraps the body in `#if <trait>` so that a
+/// consumer who disables that family never compiles the table data in — the
+/// base64 blobs are string literals, and an unreferenced literal still occupies
+/// the binary, so exclusion has to happen at compile time, not link time.
+func write(_ name: String, _ contents: String, trait: String? = nil) {
     let url = outDir.appendingPathComponent(name)
-    try! (header + contents).write(to: url, atomically: true, encoding: .utf8)
-    print("wrote \(name)")
+    let body = trait.map { "#if \($0)\n\(contents)\n#endif\n" } ?? contents
+    try! (header + body).write(to: url, atomically: true, encoding: .utf8)
+    print("wrote \(name)\(trait.map { "  [#if \($0)]" } ?? "")")
 }
 
 // MARK: - Single-byte tables + registry
 
 // Canonical name  ->  index-file stem. Order defines the `.singleByte(N)` index
 // and MUST match the statics in Encoding.swift.
-let singleByte: [(name: String, file: String)] = [
-    ("IBM866", "ibm866"),
-    ("ISO-8859-2", "iso-8859-2"), ("ISO-8859-3", "iso-8859-3"), ("ISO-8859-4", "iso-8859-4"),
-    ("ISO-8859-5", "iso-8859-5"), ("ISO-8859-6", "iso-8859-6"), ("ISO-8859-7", "iso-8859-7"),
-    ("ISO-8859-8", "iso-8859-8"), ("ISO-8859-8-I", "iso-8859-8"),
-    ("ISO-8859-10", "iso-8859-10"), ("ISO-8859-13", "iso-8859-13"), ("ISO-8859-14", "iso-8859-14"),
-    ("ISO-8859-15", "iso-8859-15"), ("ISO-8859-16", "iso-8859-16"),
-    ("KOI8-R", "koi8-r"), ("KOI8-U", "koi8-u"), ("macintosh", "macintosh"),
-    ("windows-874", "windows-874"),
-    ("windows-1250", "windows-1250"), ("windows-1251", "windows-1251"), ("windows-1252", "windows-1252"),
-    ("windows-1253", "windows-1253"), ("windows-1254", "windows-1254"), ("windows-1255", "windows-1255"),
-    ("windows-1256", "windows-1256"), ("windows-1257", "windows-1257"), ("windows-1258", "windows-1258"),
-    ("x-mac-cyrillic", "x-mac-cyrillic"),
+// `type` is the Swift name of the static namespace (`Encoding.Windows1252`),
+// spelled explicitly rather than derived, so it can never drift.
+let singleByte: [(name: String, file: String, type: String)] = [
+    ("IBM866", "ibm866", "IBM866"),
+    ("ISO-8859-2", "iso-8859-2", "ISO8859_2"), ("ISO-8859-3", "iso-8859-3", "ISO8859_3"),
+    ("ISO-8859-4", "iso-8859-4", "ISO8859_4"), ("ISO-8859-5", "iso-8859-5", "ISO8859_5"),
+    ("ISO-8859-6", "iso-8859-6", "ISO8859_6"), ("ISO-8859-7", "iso-8859-7", "ISO8859_7"),
+    ("ISO-8859-8", "iso-8859-8", "ISO8859_8"), ("ISO-8859-8-I", "iso-8859-8", "ISO8859_8I"),
+    ("ISO-8859-10", "iso-8859-10", "ISO8859_10"), ("ISO-8859-13", "iso-8859-13", "ISO8859_13"),
+    ("ISO-8859-14", "iso-8859-14", "ISO8859_14"), ("ISO-8859-15", "iso-8859-15", "ISO8859_15"),
+    ("ISO-8859-16", "iso-8859-16", "ISO8859_16"),
+    ("KOI8-R", "koi8-r", "KOI8R"), ("KOI8-U", "koi8-u", "KOI8U"),
+    ("macintosh", "macintosh", "Macintosh"),
+    ("windows-874", "windows-874", "Windows874"),
+    ("windows-1250", "windows-1250", "Windows1250"), ("windows-1251", "windows-1251", "Windows1251"),
+    ("windows-1252", "windows-1252", "Windows1252"), ("windows-1253", "windows-1253", "Windows1253"),
+    ("windows-1254", "windows-1254", "Windows1254"), ("windows-1255", "windows-1255", "Windows1255"),
+    ("windows-1256", "windows-1256", "Windows1256"), ("windows-1257", "windows-1257", "Windows1257"),
+    ("windows-1258", "windows-1258", "Windows1258"),
+    ("x-mac-cyrillic", "x-mac-cyrillic", "XMacCyrillic"),
 ]
 
 var sbTablesSrc = "let _singleByteTables: [[UInt16]] = [\n"
@@ -130,7 +142,31 @@ sbTablesSrc += "]\n\n"
 sbTablesSrc += "let _singleByteNames: [String] = [\n  "
 sbTablesSrc += singleByte.map { "\"\($0.name)\"" }.joined(separator: ", ")
 sbTablesSrc += "\n]\n"
-write("SingleByteTables.swift", sbTablesSrc)
+write("SingleByteTables.swift", sbTablesSrc, trait: "SingleByte")
+
+// Static per-encoding namespaces for the single-byte family. All 28 share one
+// small table array, so co-locating them in a single file costs nothing.
+var sbEncSrc = "extension Encoding {\n"
+for (i, sb) in singleByte.enumerated() {
+    sbEncSrc += """
+        /// \(sb.name), resolved statically — links only the single-byte tables.
+        public enum \(sb.type): TextEncoding {
+            public static var name: String { "\(sb.name)" }
+
+            public static func decode(_ bytes: [UInt8], mode: DecodingErrorMode) throws(ViceroyError) -> String {
+                try runDecode(SingleByteDecoder(tableIndex: \(i)), bytes, mode, stripBOM: false)
+            }
+
+            public static func encode(_ string: String, mode: EncodingErrorMode) throws(ViceroyError) -> [UInt8] {
+                try runEncode(SingleByteEncoder(tableIndex: \(i)), string.unicodeScalars, mode)
+            }
+        }
+
+
+    """
+}
+sbEncSrc += "}\n"
+write("SingleByteEncodings.swift", sbEncSrc, trait: "SingleByte")
 
 // MARK: - Labels + encoding registry
 
@@ -178,14 +214,39 @@ labelsSrc += "\n]\n\n"
 labelsSrc += "let _schemes: [Scheme] = [\n"
 labelsSrc += schemes.map { "  \($0)" }.joined(separator: ",\n")
 labelsSrc += "\n]\n\n"
-labelsSrc += "let _labelToIndex: [String: Int] = [\n"
-labelsSrc += labelPairs.sorted { $0.0 < $1.0 }.map { "  \"\($0.0)\": \($0.1)" }.joined(separator: ",\n")
+// Label lookup ships as a byte-searchable ASCII table rather than a
+// `[String: Int]`. Swift `String` hashing/equality is canonical-equivalence
+// based, which drags the Unicode normalization tables
+// (`libswiftUnicodeDataTables`) into every binary — fatal for Embedded Swift.
+// WHATWG labels are pure ASCII, so a sorted blob + binary search needs none of it.
+let sortedLabels = labelPairs.sorted { a, b in
+    Array(a.0.utf8).lexicographicallyPrecedes(Array(b.0.utf8))
+}
+var blob = ""
+var offsets: [Int] = [0]
+var encIdx: [Int] = []
+for (label, id) in sortedLabels {
+    precondition(label.utf8.allSatisfy { $0 >= 0x20 && $0 < 0x7F && $0 != 0x22 && $0 != 0x5C },
+                 "label is not printable-ASCII / needs escaping: \(label)")
+    blob += label
+    offsets.append(blob.utf8.count)
+    encIdx.append(id)
+}
+labelsSrc += "/// All \(sortedLabels.count) WHATWG labels, ASCII, concatenated in ascending byte order.\n"
+labelsSrc += "let _labelBlob: StaticString = \"\(blob)\"\n\n"
+labelsSrc += "/// Start offset of each label in `_labelBlob` (count + 1 entries).\n"
+labelsSrc += "let _labelOffsets: [UInt32] = [\n  "
+labelsSrc += offsets.map(String.init).joined(separator: ", ")
+labelsSrc += "\n]\n\n"
+labelsSrc += "/// Encoding-registry index for each label, parallel to `_labelOffsets`.\n"
+labelsSrc += "let _labelEncoding: [UInt16] = [\n  "
+labelsSrc += encIdx.map(String.init).joined(separator: ", ")
 labelsSrc += "\n]\n"
 write("Labels.swift", labelsSrc)
 
 // MARK: - Multibyte tables
 
-func writeU16(_ file: String, _ symbol: String, _ index: String) {
+func writeU16(_ file: String, _ symbol: String, _ index: String, trait: String? = nil) {
     let entries = parseIndex(vendor(index))
     let t = denseTable(entries, sentinel: 0xFFFF)
     let src = """
@@ -193,10 +254,10 @@ func writeU16(_ file: String, _ symbol: String, _ index: String) {
     let _\(symbol)_count = \(t.count)
 
     """
-    write(file, src)
+    write(file, src, trait: trait)
 }
 
-func writeU32(_ file: String, _ symbol: String, _ index: String) {
+func writeU32(_ file: String, _ symbol: String, _ index: String, trait: String? = nil) {
     let entries = parseIndex(vendor(index))
     let t = denseTable(entries, sentinel: 0xFFFF_FFFF)
     let src = """
@@ -204,14 +265,14 @@ func writeU32(_ file: String, _ symbol: String, _ index: String) {
     let _\(symbol)_count = \(t.count)
 
     """
-    write(file, src)
+    write(file, src, trait: trait)
 }
 
-writeU16("JIS0208Data.swift", "jis0208", "index-jis0208.txt")
-writeU16("JIS0212Data.swift", "jis0212", "index-jis0212.txt")
-writeU16("EUCKRData.swift", "eucKR", "index-euc-kr.txt")
-writeU16("GB18030Data.swift", "gb18030", "index-gb18030.txt")
-writeU32("Big5Data.swift", "big5", "index-big5.txt")
+writeU16("JIS0208Data.swift", "jis0208", "index-jis0208.txt", trait: "Japanese")
+writeU16("JIS0212Data.swift", "jis0212", "index-jis0212.txt", trait: "Japanese")
+writeU16("EUCKRData.swift", "eucKR", "index-euc-kr.txt", trait: "Korean")
+writeU16("GB18030Data.swift", "gb18030", "index-gb18030.txt", trait: "Chinese")
+writeU32("Big5Data.swift", "big5", "index-big5.txt", trait: "Chinese")
 
 // gb18030 ranges (small — plain arrays)
 let rangesEntries = parseIndex(vendor("index-gb18030-ranges.txt"))
@@ -220,7 +281,7 @@ rangesSrc += rangesEntries.map { "\($0.0)" }.joined(separator: ", ")
 rangesSrc += "\n]\n\nlet _gb18030RangesCodePoints: [UInt32] = [\n  "
 rangesSrc += rangesEntries.map { "0x\(String($0.1, radix: 16, uppercase: true))" }.joined(separator: ", ")
 rangesSrc += "\n]\n"
-write("GB18030Ranges.swift", rangesSrc)
+write("GB18030Ranges.swift", rangesSrc, trait: "Chinese")
 
 // ISO-2022-JP katakana (63 entries — half-width katakana → jis0208 code point,
 // used only by the ISO-2022-JP encoder). Small → plain array.
@@ -228,6 +289,6 @@ let kata = denseTable(parseIndex(vendor("index-iso-2022-jp-katakana.txt")), sent
 var kataSrc = "let _iso2022jpKatakana: [UInt16] = [\n  "
 kataSrc += kata.map { "0x\(String($0, radix: 16, uppercase: true))" }.joined(separator: ", ")
 kataSrc += "\n]\n"
-write("ISO2022JPKatakana.swift", kataSrc)
+write("ISO2022JPKatakana.swift", kataSrc, trait: "Japanese")
 
 print("done — \(names.count) encodings, \(labelPairs.count) labels")

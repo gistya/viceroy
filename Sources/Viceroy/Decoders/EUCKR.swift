@@ -1,3 +1,4 @@
+#if Korean
 //===----------------------------------------------------------------------===//
 // Viceroy — EUC-KR  (WHATWG §13.1) — covers Wansung + UHC (cp949).
 //===----------------------------------------------------------------------===//
@@ -38,3 +39,21 @@ struct EUCKREncoder: ScalarHandler {
         return .ok
     }
 }
+
+// MARK: - Static entry point
+
+extension Encoding {
+    /// EUC-KR, resolved statically — links only this encoding's decoder and tables.
+    public enum EUCKR: TextEncoding {
+        public static var name: String { "EUC-KR" }
+
+        public static func decode(_ bytes: [UInt8], mode: DecodingErrorMode) throws(ViceroyError) -> String {
+            try runDecode(EUCKRDecoder(), bytes, mode, stripBOM: false)
+        }
+
+        public static func encode(_ string: String, mode: EncodingErrorMode) throws(ViceroyError) -> [UInt8] {
+            try runEncode(EUCKREncoder(), string.unicodeScalars, mode)
+        }
+    }
+}
+#endif

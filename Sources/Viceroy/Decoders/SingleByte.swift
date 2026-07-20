@@ -1,3 +1,4 @@
+#if SingleByte
 //===----------------------------------------------------------------------===//
 // Viceroy — Generic single-byte  (WHATWG §"single-byte decoder/encoder")
 //
@@ -40,3 +41,4 @@ struct SingleByteEncoder: ScalarHandler {
         return .unmappable
     }
 }
+#endif
