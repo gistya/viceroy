@@ -24,7 +24,22 @@ GNU libiconv, on the other hand, is an all-or-nothing affair:
 
 *(linked binary minus that language's own empty-program baseline: 50,600 B for Swift, 16,840 B for C)*
 
-Viceroy exposes per-encoding granularity for the linker to exploit, allowing the compiler to strip out encodings you're not using.
+Viceroy exposes per-encoding granularity for the linker to exploit, allowing the compiler to strip out encodings you're not using.  With no encodings, Viceroy is 50,600 B as a release build with `-dead_strip`. 
+
+The following table shows list of encodings and total binary size after code stripping, if you enable just the listed Viceroy trait:
+
+| If Only This Viceroy Trait Is Used | Then Binary Size After Stripping Including Baseline | And You Get These Encodings |
+|---|---:|---|
+| *(baseline)* | **202,920 B** *(baseline only)* | [UTF-8](https://en.wikipedia.org/wiki/UTF-8) · [UTF-16LE](https://en.wikipedia.org/wiki/UTF-16) · [UTF-16BE](https://en.wikipedia.org/wiki/UTF-16) · [replacement](https://encoding.spec.whatwg.org/#replacement) · [x-user-defined](https://encoding.spec.whatwg.org/#x-user-defined) |
+| `SingleByte` *and baseline* | **230,824 B**<br>*including baseline* | [IBM866](https://en.wikipedia.org/wiki/Code_page_866) · [ISO-8859-2](https://en.wikipedia.org/wiki/ISO/IEC_8859-2) · [ISO-8859-3](https://en.wikipedia.org/wiki/ISO/IEC_8859-3) · [ISO-8859-4](https://en.wikipedia.org/wiki/ISO/IEC_8859-4) · [ISO-8859-5](https://en.wikipedia.org/wiki/ISO/IEC_8859-5) · [ISO-8859-6](https://en.wikipedia.org/wiki/ISO/IEC_8859-6) · [ISO-8859-7](https://en.wikipedia.org/wiki/ISO/IEC_8859-7) · [ISO-8859-8](https://en.wikipedia.org/wiki/ISO/IEC_8859-8) · [ISO-8859-8-I](https://en.wikipedia.org/wiki/ISO-8859-8-I) · [ISO-8859-10](https://en.wikipedia.org/wiki/ISO/IEC_8859-10) · [ISO-8859-13](https://en.wikipedia.org/wiki/ISO/IEC_8859-13) · [ISO-8859-14](https://en.wikipedia.org/wiki/ISO/IEC_8859-14) · [ISO-8859-15](https://en.wikipedia.org/wiki/ISO/IEC_8859-15) · [ISO-8859-16](https://en.wikipedia.org/wiki/ISO/IEC_8859-16) · [KOI8-R](https://en.wikipedia.org/wiki/KOI8-R) · [KOI8-U](https://en.wikipedia.org/wiki/KOI8-U) · [macintosh](https://en.wikipedia.org/wiki/Mac_OS_Roman) · [windows-874](https://en.wikipedia.org/wiki/ISO/IEC_8859-11) · [windows-1250](https://en.wikipedia.org/wiki/Windows-1250) · [windows-1251](https://en.wikipedia.org/wiki/Windows-1251) · [windows-1252](https://en.wikipedia.org/wiki/Windows-1252) · [windows-1253](https://en.wikipedia.org/wiki/Windows-1253) · [windows-1254](https://en.wikipedia.org/wiki/Windows-1254) · [windows-1255](https://en.wikipedia.org/wiki/Windows-1255) · [windows-1256](https://en.wikipedia.org/wiki/Windows-1256) · [windows-1257](https://en.wikipedia.org/wiki/Windows-1257) · [windows-1258](https://en.wikipedia.org/wiki/Windows-1258) · [x-mac-cyrillic](https://en.wikipedia.org/wiki/Mac_OS_Cyrillic_encoding) <br>*plus all the baseline encodings* |
+| `Japanese` <br>*and baseline* | **315,368 B**<br>*including baseline* | [Shift_JIS](https://en.wikipedia.org/wiki/Shift_JIS) · [EUC-JP](https://en.wikipedia.org/wiki/Extended_Unix_Code#EUC-JP) · [ISO-2022-JP](https://en.wikipedia.org/wiki/ISO/IEC_2022#ISO-2022-JP) <br>*plus all the baseline encodings* |
+| `Chinese`<br> *and baseline* | **421,544 B**<br>*including baseline* | [Big5](https://en.wikipedia.org/wiki/Big5) · [GBK](https://en.wikipedia.org/wiki/GBK_(character_encoding)) · [gb18030](https://en.wikipedia.org/wiki/GB_18030) <br>*plus all the baseline encodings* |
+| `Korean`<br> *and baseline* | **294,600 B**<br>*including baseline* | [EUC-KR](https://en.wikipedia.org/wiki/Extended_Unix_Code#EUC-KR) <br>*plus all the baseline encodings* |
+| All encodings (default) | **613,576 B**<br>*including all* | all 40 |
+
+[`ISO-8859-1`, `latin1` and `ascii` all resolve to `windows-1252`](https://encoding.spec.whatwg.org/#names-and-labels)
+per WHATWG, so `SingleByte` covers Western, Cyrillic, Greek, Hebrew, Arabic, Baltic
+and Thai legacy text. 228 labels resolve to these 40 encodings.
 
 ## Embeddedroy:
 
