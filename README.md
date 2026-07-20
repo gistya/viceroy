@@ -3,6 +3,8 @@
 # Viceroy 
 **A pure-Swift, zero-dependency character-encoding library. (Alternative to iconv).**
 
+## apple / linux \ windows / embedded \ wasm / android
+
 Viceroy transcodes bytes between character encodings with no dependencies. No libiconv, no ICU, no Foundation, nothing but Swift stdlib. Viceroy compiles and runs identically on macOS, Linux, and Windows. There's nothing to install other than a Swift toolchain to build Viceroy.
 
 Viceroy targets the [**WHATWG Encoding Standard**](https://encoding.spec.whatwg.org/). It's a closed, precisely-specified set of ~40 encoders/decoders every web browser uses. This set covers 100% of the character encodings that actually appear in real HTML, XML, and text.
