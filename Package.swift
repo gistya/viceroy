@@ -32,6 +32,7 @@ let package = Package(
         .trait(name: "Korean",     description: "EUC-KR / UHC (~145 KB of tables)"),
         .trait(name: "SingleByte", description: "The 28 single-byte legacy encodings (~20 KB)"),
         .default(enabledTraits: ["Chinese", "Japanese", "Korean", "SingleByte"]),
+        .trait(name: "none", enabledTraits: []),
     ],
     targets: [
         // The shipping library. Zero dependencies, no Foundation.
